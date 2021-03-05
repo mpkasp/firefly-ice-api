@@ -1,11 +1,17 @@
 package com.fireflydesign.libraries;
 
+import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.pm.PackageManager;
+import android.Manifest;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -15,6 +21,7 @@ import android.widget.CheckBox;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.fireflydesign.fireflydevice.FDDetour;
 import com.fireflydesign.fireflydevice.FDError;
@@ -22,6 +29,7 @@ import com.fireflydesign.fireflydevice.FDFireflyDeviceLogger;
 import com.fireflydesign.fireflydevice.FDFireflyIce;
 import com.fireflydesign.fireflydevice.FDFireflyIceChannel;
 import com.fireflydesign.fireflydevice.FDFireflyIceChannelBLE;
+import com.fireflydesign.fireflydevice.FDFireflyIceCoder;
 import com.fireflydesign.fireflydevice.FDFireflyIceDiagnostics;
 import com.fireflydesign.fireflydevice.FDFireflyIceDirectTestModeReport;
 import com.fireflydesign.fireflydevice.FDFireflyIceHardwareId;
@@ -53,10 +61,106 @@ import java.util.UUID;
 
 public class MainActivity extends Activity implements FDFireflyIceManager.Delegate, FDFireflyIceObserver, FDFirmwareUpdateTask.Delegate, FDPullTask.Delegate {
 
+    String baseUUID;
     FDFireflyIceManager fireflyIceManager;
     Map<String, Map<String, Object>> discovered;
     List<String> listViewItems;
     FDFireflyIce fireflyIce;
+
+    final private int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 124;
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        switch (requestCode) {
+            case REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS: {
+                Map<String, Integer> perms = new HashMap<>();
+                // Initial
+                perms.put(Manifest.permission.ACCESS_COARSE_LOCATION, PackageManager.PERMISSION_GRANTED);
+
+                // Fill with results
+                for (int i = 0; i < permissions.length; i++) {
+                    perms.put(permissions[i], grantResults[i]);
+                }
+
+                // Check for ACCESS_COARSE_LOCATION
+                if (perms.get(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    // All Permissions Granted
+
+                    // Permission Denied
+                    Toast.makeText(MainActivity.this, "All Permission GRANTED !! Thank You :)", Toast.LENGTH_SHORT)
+                            .show();
+                } else {
+                    // Permission Denied
+                    Toast.makeText(MainActivity.this, "One or More Permissions are DENIED Exiting App :(", Toast.LENGTH_SHORT)
+                            .show();
+
+                    finish();
+                }
+            }
+            break;
+            default:
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+
+    @TargetApi(Build.VERSION_CODES.M)
+    private void dealWithPermissions() {
+        List<String> permissionsNeeded = new ArrayList<>();
+
+        final List<String> permissionsList = new ArrayList<>();
+        if (!addPermission(permissionsList, Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            permissionsNeeded.add("Show Location");
+        }
+
+        if (permissionsList.size() > 0) {
+            if (permissionsNeeded.size() > 0) {
+                // Need Rationale
+                String message = "App needs access to " + permissionsNeeded.get(0);
+
+                for (int i = 1; i < permissionsNeeded.size(); i++) {
+                    message = message + ", " + permissionsNeeded.get(i);
+                }
+
+                showMessageOKCancel(message,
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                requestPermissions(permissionsList.toArray(new String[permissionsList.size()]),
+                                        REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
+                            }
+                        });
+                return;
+            }
+            requestPermissions(permissionsList.toArray(new String[permissionsList.size()]),
+                    REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
+            return;
+        }
+
+        Toast.makeText(MainActivity.this, "No new Permission Required- Launching App .You are Awesome!!", Toast.LENGTH_SHORT)
+                .show();
+    }
+
+    private void showMessageOKCancel(String message, DialogInterface.OnClickListener okListener) {
+        new AlertDialog.Builder(MainActivity.this)
+                .setMessage(message)
+                .setPositiveButton("OK", okListener)
+                .setNegativeButton("Cancel", null)
+                .create()
+                .show();
+    }
+
+    @TargetApi(Build.VERSION_CODES.M)
+    private boolean addPermission(List<String> permissionsList, String permission) {
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            permissionsList.add(permission);
+            // Check for Rationale Option
+            if (!shouldShowRequestPermissionRationale(permission)) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,7 +173,11 @@ public class MainActivity extends Activity implements FDFireflyIceManager.Delega
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_single_choice, listViewItems);
         listView.setAdapter(adapter);
 
-        UUID serviceUUID = UUID.fromString("310a0001-1b95-5091-b0bd-b7a681846399"); // Firefly Ice
+//        baseUUID = "310a0001-1b95-5091-b0bd-b7a681846399"; // Firefly Ice
+//        baseUUID = "577FB8B4-553E-4807-9779-8647481D49B3"; // Atlas A102
+//        baseUUID = "39316b41-d4a3-be84-594d-4d0805f9d380"; // Atlas FIT
+        baseUUID = "2fa1a5ed-2c05-4bb2-9e4a-a7f16f1c395c"; // Atlas PET
+        UUID serviceUUID = UUID.fromString(baseUUID);
         BluetoothManager bluetoothManager = (BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE);
         BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
         if (bluetoothAdapter != null) {
@@ -77,6 +185,10 @@ public class MainActivity extends Activity implements FDFireflyIceManager.Delega
         } else {
             TextView statusTextView = (TextView)findViewById(R.id.statusTextView);
             statusTextView.setText("Bluetooth is not available!");
+        }
+
+        if (Build.VERSION.SDK_INT >= 23) {
+            dealWithPermissions();
         }
     }
 
@@ -89,7 +201,8 @@ public class MainActivity extends Activity implements FDFireflyIceManager.Delega
 
         FDFireflyIce fireflyIce = new FDFireflyIce(this);
         fireflyIce.observable.addObserver(this);
-        FDFireflyIceChannelBLE channel = new FDFireflyIceChannelBLE(this, "310a0001-1b95-5091-b0bd-b7a681846399", bluetoothDevice);
+        fireflyIce.notifyObservable.addObserver(this);
+        FDFireflyIceChannelBLE channel = new FDFireflyIceChannelBLE(this, baseUUID, bluetoothDevice);
         fireflyIce.addChannel(channel, "BLE");
 
         map = new HashMap<>();
@@ -238,10 +351,16 @@ public class MainActivity extends Activity implements FDFireflyIceManager.Delega
     }
 
     @Override
-    public void fireflyIceStatus(FDFireflyIce fireflyIce, FDFireflyIceChannel channel, FDFireflyIceChannel.Status status) {
+    public void fireflyIceStatus(final FDFireflyIce fireflyIce, final FDFireflyIceChannel channel, FDFireflyIceChannel.Status status) {
         if (status == FDFireflyIceChannel.Status.Open) {
             FDFireflyDeviceLogger.info(null, "FD020012", "executing hello task");
             fireflyIce.executor.execute(new FDHelloTask(fireflyIce, channel, null));
+            FDFireflyIceSimpleTask.Delegate delegate = new FDFireflyIceSimpleTask.Delegate() {
+                public void run() {
+                    fireflyIce.coder.sendSetPropertySubscribe(channel, FDFireflyIceCoder.FD_CONTROL_PROPERTY_STORAGE);
+                }
+            };
+            fireflyIce.executor.execute(new FDFireflyIceSimpleTask(fireflyIce, channel, delegate));
         }
     }
 
@@ -312,7 +431,7 @@ public class MainActivity extends Activity implements FDFireflyIceManager.Delega
 
     @Override
     public void fireflyIceStorage(FDFireflyIce fireflyIce, FDFireflyIceChannel channel, FDFireflyIceStorage storage) {
-
+        FDFireflyDeviceLogger.info(null, "FD020014", "rx storage property");
     }
 
     @Override

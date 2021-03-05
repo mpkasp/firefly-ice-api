@@ -11,28 +11,42 @@ package com.fireflydesign.fireflydevice;
 import android.app.Activity;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
+import android.content.Context;
+import android.os.DeadObjectException;
+
+import static android.bluetooth.BluetoothGatt.CONNECTION_PRIORITY_HIGH;
 
 public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
+
+    public class Rssi {
+        float value;
+        Date date;
+    }
 
     FDFireflyDeviceLog log;
     FDDetour detour;
     FDFireflyIceChannel.Delegate delegate;
     FDFireflyIceChannel.Status status;
+    Rssi rssi;
 
-    Activity activity;
-    UUID bluetoothGattCharacteristicUUID;
-    UUID bluetoothGattCharacteristicNoResponseUUID;
-    BluetoothDevice bluetoothDevice;
+    public FDFireflyIceMediator mediator;
+    public UUID bluetoothGattCharacteristicUUID;
+    public UUID bluetoothGattCharacteristicNoResponseUUID;
+    public String bluetoothDeviceAddress;
+    public Boolean autoConnect;
 
     List<FDDetourSource> detourSources;
     int writePending;
@@ -42,23 +56,24 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
     BluetoothGattCharacteristic bluetoothGattCharacteristic;
     BluetoothGattCharacteristic bluetoothGattCharacteristicNoResponse;
 
-    public FDFireflyIceChannelBLE(final Activity activity, final String bluetoothGattServiceUUIDString, final BluetoothDevice bluetoothDevice) {
+    public FDFireflyIceChannelBLE(final FDFireflyIceMediator mediator, final String bluetoothGattServiceUUIDString, final String bluetoothDeviceAddress) {
         this.detour = new FDDetour();
 
-        this.activity = activity;
+        this.mediator = mediator;
         StringBuffer bluetoothGattCharacteristicUUIDString = new StringBuffer(bluetoothGattServiceUUIDString);
         bluetoothGattCharacteristicUUIDString.replace(4, 8, "0002");
         this.bluetoothGattCharacteristicUUID = UUID.fromString(bluetoothGattCharacteristicUUIDString.toString());
         bluetoothGattCharacteristicUUIDString.replace(4, 8, "0003");
         this.bluetoothGattCharacteristicNoResponseUUID = UUID.fromString(bluetoothGattCharacteristicUUIDString.toString());
-        this.bluetoothDevice = bluetoothDevice;
+        this.bluetoothDeviceAddress = bluetoothDeviceAddress;
 
         detourSources = new ArrayList<FDDetourSource>();
+        writePendingLimit = 1;
         bluetoothGattCallback = new BluetoothGattCallback() {
             @Override
             public void onCharacteristicChanged(final BluetoothGatt gatt, final BluetoothGattCharacteristic characteristic) {
                 final byte[] data = characteristic.getValue();
-                activity.runOnUiThread(new Runnable() {
+                mediator.runOnThread(new Runnable() {
                     public void run() {
                         characteristicChanged(gatt, characteristic, data);
                     }
@@ -67,7 +82,7 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
 
             @Override
             public void onCharacteristicWrite(final BluetoothGatt gatt, final BluetoothGattCharacteristic characteristic, final int status) {
-                activity.runOnUiThread(new Runnable() {
+                mediator.runOnThread(new Runnable() {
                     public void run() {
                         writeComplete(gatt, status);
                     }
@@ -76,7 +91,7 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
 
             @Override
             public void onDescriptorWrite(final BluetoothGatt gatt, final BluetoothGattDescriptor descriptor, final int status) {
-                activity.runOnUiThread(new Runnable() {
+                mediator.runOnThread(new Runnable() {
                     public void run() {
                         writeComplete(gatt, status);
                     }
@@ -85,7 +100,7 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
 
             @Override
             public void onConnectionStateChange(final BluetoothGatt gatt, final int status, final int newState) {
-                activity.runOnUiThread(new Runnable() {
+                mediator.runOnThread(new Runnable() {
                     public void run() {
                         connectionStateChange(gatt, status, newState);
                     }
@@ -94,7 +109,7 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
 
             @Override
             public void onServicesDiscovered(final BluetoothGatt gatt, final int status) {
-                activity.runOnUiThread(new Runnable() {
+                mediator.runOnThread(new Runnable() {
                     public void run() {
                         servicesDiscovered(gatt, status);
                     }
@@ -127,6 +142,14 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
 		return status;
 	}
 
+	public void setRssi(Rssi rssi) {
+        this.rssi = rssi;
+    }
+
+	public Rssi getRssi() {
+        return rssi;
+    }
+
 	public void open() {
         FDFireflyDeviceLogger.debug(log, "FD010901", "opening firefly");
 		status = FDFireflyIceChannel.Status.Opening;
@@ -134,7 +157,7 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
 			delegate.fireflyIceChannelStatus(this, status);
 		}
 
-        bluetoothGatt = bluetoothDevice.connectGatt(activity, false, bluetoothGattCallback);
+        bluetoothGatt = mediator.connectGatt(bluetoothDeviceAddress, autoConnect, bluetoothGattCallback);
 	}
 
     void shutdown() {
@@ -142,8 +165,14 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
         status = FDFireflyIceChannel.Status.Closed;
 
         if (bluetoothGatt != null) {
-            if (bluetoothGattCharacteristic != null) {
-                bluetoothGatt.setCharacteristicNotification(bluetoothGattCharacteristic, true);
+            try {
+                if (bluetoothGattCharacteristic != null) {
+                    bluetoothGatt.setCharacteristicNotification(bluetoothGattCharacteristic, false);
+                }
+            } catch (Exception e) {
+                if (!(e instanceof DeadObjectException)) {
+                    throw e;
+                }
             }
             bluetoothGatt.disconnect();
             bluetoothGatt.close();
@@ -156,15 +185,23 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
         detourSources.clear();
         writePending = 0;
         writePendingLimit = 1;
+
+        if (delegate != null) {
+            delegate.fireflyIceChannelStatus(this, status);
+        }
     }
 
     public void close() {
         shutdown();
-
-		if (delegate != null) {
-			delegate.fireflyIceChannelStatus(this, status);
-		}
 	}
+
+	void bluetoothTurningOff() {
+        mediator.runOnThread(new Runnable() {
+            public void run() {
+                shutdown();
+            }
+        });
+    }
 
     void servicesDiscovered(final BluetoothGatt gatt, final int status) {
         FDFireflyDeviceLogger.debug(log, "FD010903", "found firefly service");
@@ -198,6 +235,11 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
             writePendingLimit = 12;
         }
 
+        boolean result = bluetoothGatt.requestConnectionPriority(CONNECTION_PRIORITY_HIGH);
+        if (!result) {
+            FDFireflyDeviceLogger.debug(log, "FD010911", "cannot set BLE connection to high priority");
+        }
+
         if (bluetoothGattCharacteristic != null) {
             this.status = FDFireflyIceChannel.Status.Open;
             if (delegate != null) {
@@ -209,7 +251,16 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
     void connectionStateChange(final BluetoothGatt gatt, final int status, final int newState) {
         if (newState == BluetoothProfile.STATE_CONNECTED) {
             FDFireflyDeviceLogger.debug(log, "FD010905", "connected to firefly");
-            bluetoothGatt.discoverServices();
+
+            detour.clear();
+            detourSources.clear();
+            writePending = 0;
+            writePendingLimit = 1;
+
+            // !!! with autoConnect, restart device - will get disconnected event...  then connected??? -denis
+            if (bluetoothGatt != null) {
+                bluetoothGatt.discoverServices();
+            }
         } else
         if (newState == BluetoothProfile.STATE_DISCONNECTED) {
             FDFireflyDeviceLogger.debug(log, "FD010906", "disconnected from firefly");
@@ -221,7 +272,6 @@ public class FDFireflyIceChannelBLE implements FDFireflyIceChannel {
         boolean canSetValue = characteristic.setValue(FDBinary.toByteArray(data));
         Object value = characteristic.getValue();
         BluetoothGattService service = characteristic.getService();
-        BluetoothDevice device = bluetoothGatt.getDevice();
 
         boolean canWriteCharacteristic = bluetoothGatt.writeCharacteristic(characteristic);
         FDFireflyDeviceLogger.debug(

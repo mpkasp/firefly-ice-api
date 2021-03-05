@@ -18,7 +18,8 @@ public class FDFireflyIce implements FDFireflyIceChannel.Delegate {
     public FDFireflyDeviceLog log;
     public FDFireflyIceCoder coder;
     public FDExecutor executor;
-    public FDObservable observable;
+	public FDObservable observable;
+	public FDObservable notifyObservable;
     public Map<String, FDFireflyIceChannel> channels;
     public String name;
 
@@ -26,12 +27,14 @@ public class FDFireflyIce implements FDFireflyIceChannel.Delegate {
     public FDFireflyIceHardwareId hardwareId;
     public FDFireflyIceVersion bootVersion;
 
-    public FDFireflyIce(Activity activity) {
+    public FDFireflyIce(FDFireflyIceMediator mediator) {
         channels = new HashMap<String, FDFireflyIceChannel>();
 		observable = new FDObservable();
 		observable.addObserverInterface(FDFireflyIceObserver.class);
-        coder = new FDFireflyIceCoder(observable);
-        executor = new FDExecutor(activity);
+		notifyObservable = new FDObservable();
+		notifyObservable.addObserverInterface(FDFireflyIceObserver.class);
+        coder = new FDFireflyIceCoder(observable, notifyObservable);
+        executor = new FDExecutor(mediator);
         name = "anonymous";
     }
 

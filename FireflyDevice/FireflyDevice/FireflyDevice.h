@@ -11,6 +11,7 @@
 #import <FireflyDevice/FDHardwareId.h>
 #import <FireflyDevice/FDBundle.h>
 #import <FireflyDevice/FDBundleManager.h>
+#import <FireflyDevice/FDCobs.h>
 #import <FireflyDevice/FDFireflyDeviceLogger.h>
 #import <FireflyDevice/FDFileLog.h>
 #import <FireflyDevice/FDBinary.h>
@@ -34,10 +35,12 @@
 #import <FireflyDevice/FDFireflyIceCoder.h>
 #import <FireflyDevice/FDFireflyIceTaskSteps.h>
 #import <FireflyDevice/FDHelloTask.h>
+#import <FireflyDevice/FDPullTask.h>
 #import <FireflyDevice/FDSyncTask.h>
 #import <FireflyDevice/FDFirmwareUpdateTask.h>
 #import <FireflyDevice/FDFireflyIceSimpleTask.h>
 #import <FireflyDevice/FDJSON.h>
+#import <FireflyDevice/FDVMADecoder.h>
 #import <FireflyDevice/FDWeak.h>
 
 @interface FireflyDevice : NSObject

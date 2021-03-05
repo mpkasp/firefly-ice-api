@@ -14,7 +14,7 @@
 
 @optional
 
-- (void)firmwareUpdateTask:(FDFirmwareUpdateTask *)task check:(BOOL)isFirmwareUpToDate;
+- (BOOL)firmwareUpdateTask:(FDFirmwareUpdateTask *)task check:(BOOL)isFirmwareUpToDate;
 
 - (void)firmwareUpdateTask:(FDFirmwareUpdateTask *)task progress:(float)progress;
 
@@ -41,6 +41,7 @@
 @property BOOL downgrade;
 @property BOOL commit;
 @property BOOL reset;
+@property BOOL onlyCheckSectors;
 
 @property BOOL useArea;
 @property uint8_t area;

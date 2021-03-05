@@ -75,6 +75,7 @@ public class FDPullTask extends FDExecutor.Task implements FDFireflyIceObserver,
     public FDFireflyIceChannel channel;
     public Delegate delegate;
     public String identifier;
+    public String hardwareId;
     public Map<Integer, Decoder> decoderByType;
     public FDPullTaskUpload upload;
     public int pullAheadLimit;
@@ -125,7 +126,7 @@ public class FDPullTask extends FDExecutor.Task implements FDFireflyIceObserver,
 
     void startTimer() {
         cancelTimer();
-        timer = fireflyIce.executor.timerFactory.makeTimer(new FDTimer.Delegate() { public void timerFired() { timeout(); } }, 2.0 , FDTimer.Type.OneShot);
+        timer = fireflyIce.executor.mediator.makeTimer(new FDTimer.Delegate() { public void timerFired() { timeout(); } }, 2.0 , FDTimer.Type.OneShot);
     }
 
     void timeout() {
@@ -309,6 +310,11 @@ public class FDPullTask extends FDExecutor.Task implements FDFireflyIceObserver,
 
     @Override
     public void fireflyIceSensing(FDFireflyIce fireflyIce, FDFireflyIceChannel channel, FDFireflyIceSensing sensing) {
+
+    }
+
+    @Override
+    public void fireflyIceSubscribe(FDFireflyIce fireflyIce, FDFireflyIceChannel channel, int properties) {
 
     }
 
