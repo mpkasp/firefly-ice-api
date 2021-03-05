@@ -30,6 +30,7 @@
 @interface FDFireflyIceChannelBLE : NSObject <FDFireflyIceChannel>
 
 @property (readonly) CBUUID * _Nonnull serviceUUID;
+@property (readonly) CBCentralManager * _Nonnull centralManager;
 @property (readonly) CBPeripheral * _Nonnull peripheral;
 @property FDFireflyIceChannelBLEPeripheralObservable * _Nonnull peripheralObservable;
 @property id <FDFireflyIceChannelDelegate> _Nullable delegate;
